@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express')
 const app = express();
 const cors = require('cors')
+const admin = require("firebase-admin");
 const stripe = require("stripe")(process.env.SECRET_KEY)
 
 const PORT = process.env.PORT || 5000;
@@ -9,6 +10,13 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors())
 app.use(express.json());
+
+
+const serviceAccount = require("./fast-drop-bd-firebase-key.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 
 // Routes
 app.get("/", (req, res) => {
@@ -36,9 +44,38 @@ async function run() {
         const db = client.db("fastDropDB");
         const parcelsCollection = db.collection("parcels");
         const paymentCollection = db.collection("payments");
+        const userCollection = db.collection("users");
+        // custom middleware to verify JWT token
+        const verifyFBToken = async (req, res,next) => {
+            // console.log("verifying token" , req.headers.authorization)
+            const authHeader = req.headers.authorization;
+            if(!authHeader){
+                return res.status(401).send({message: "Unauthorized access"})
+            }
+            const token = authHeader.split(" ")[1];
+            if(!token){
+                return res.status(401).send({message: "Unauthorized access"})
+            }
+            //verify token
+
+            next()
+        } 
         //get parcel API
+        //save user info to database
+        app.post("/users", async (req, res) => {
+            const user = req.body;
+            const query = {email: user.email};
+            const existingUser = await userCollection.findOne(query);
+            if(existingUser){
+                return res.send({message: "User already exists"});
+            }
+            const result = await userCollection.insertOne(user);
+            res.send(result)
+        })
+         
         // Get parcels by user email
-        app.get('/parcels', async (req, res) => {
+        app.get('/parcels',verifyFBToken, async (req, res) => {
+            
             const email = req.query.email
             const query = email ? { senderEmail: email } : {}
             const result = await parcelsCollection.find(query).toArray()
@@ -46,6 +83,7 @@ async function run() {
         })
         //get parcel by id
         app.get("/parcels/:id", async (req, res) => {
+            
             try {
                 const id = req.params.id;
                 const parcel = await parcelsCollection.findOne({ _id: new ObjectId(id) });
