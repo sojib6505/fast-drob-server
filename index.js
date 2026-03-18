@@ -45,6 +45,7 @@ async function run() {
         const parcelsCollection = db.collection("parcels");
         const paymentCollection = db.collection("payments");
         const userCollection = db.collection("users");
+        const riderCollection = db.collection("riders");
         // custom middleware to verify JWT token
         const verifyFBToken = async (req, res,next) => {
             // console.log("verifying token" , req.headers.authorization)
@@ -57,8 +58,14 @@ async function run() {
                 return res.status(401).send({message: "Unauthorized access"})
             }
             //verify token
-
-            next()
+            try{
+                const decodedToken = await admin.auth().verifyIdToken(token);
+                req.decodedToken = decodedToken;
+                 next()
+            }
+            catch(error){
+                return res.status(401).send({message: "Forbidden access"})
+            }         
         } 
         //get parcel API
         //save user info to database
@@ -75,7 +82,7 @@ async function run() {
          
         // Get parcels by user email
         app.get('/parcels',verifyFBToken, async (req, res) => {
-            
+            console.log(req.decodedToken)
             const email = req.query.email
             const query = email ? { senderEmail: email } : {}
             const result = await parcelsCollection.find(query).toArray()
@@ -102,6 +109,12 @@ async function run() {
             const result = await parcelsCollection.insertOne(parcelData);
             res.send(result)
         });
+        //Add rider API
+        app.post("/riders",async (req,res) => {
+            const  riderData = req.body;
+            const result = await riderCollection.insertOne(riderData);
+            res.send(result)
+        })
 
         // Mark parcel as paid
         app.patch("/parcels/:id", async (req, res) => {
