@@ -14,7 +14,7 @@ app.use(express.json());
 
 const serviceAccount = require("./fast-drop-bd-firebase-key.json");
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount)
 });
 
 
@@ -47,41 +47,41 @@ async function run() {
         const userCollection = db.collection("users");
         const riderCollection = db.collection("riders");
         // custom middleware to verify JWT token
-        const verifyFBToken = async (req, res,next) => {
+        const verifyFBToken = async (req, res, next) => {
             // console.log("verifying token" , req.headers.authorization)
             const authHeader = req.headers.authorization;
-            if(!authHeader){
-                return res.status(401).send({message: "Unauthorized access"})
+            if (!authHeader) {
+                return res.status(401).send({ message: "Unauthorized access" })
             }
             const token = authHeader.split(" ")[1];
-            if(!token){
-                return res.status(401).send({message: "Unauthorized access"})
+            if (!token) {
+                return res.status(401).send({ message: "Unauthorized access" })
             }
             //verify token
-            try{
+            try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
                 req.decodedToken = decodedToken;
-                 next()
+                next()
             }
-            catch(error){
-                return res.status(401).send({message: "Forbidden access"})
-            }         
-        } 
+            catch (error) {
+                return res.status(401).send({ message: "Forbidden access" })
+            }
+        }
         //get parcel API
         //save user info to database
         app.post("/users", async (req, res) => {
             const user = req.body;
-            const query = {email: user.email};
+            const query = { email: user.email };
             const existingUser = await userCollection.findOne(query);
-            if(existingUser){
-                return res.send({message: "User already exists"});
+            if (existingUser) {
+                return res.send({ message: "User already exists" });
             }
             const result = await userCollection.insertOne(user);
             res.send(result)
         })
-         
+
         // Get parcels by user email
-        app.get('/parcels',verifyFBToken, async (req, res) => {
+        app.get('/parcels', verifyFBToken, async (req, res) => {
             console.log(req.decodedToken)
             const email = req.query.email
             const query = email ? { senderEmail: email } : {}
@@ -90,7 +90,7 @@ async function run() {
         })
         //get parcel by id
         app.get("/parcels/:id", async (req, res) => {
-            
+
             try {
                 const id = req.params.id;
                 const parcel = await parcelsCollection.findOne({ _id: new ObjectId(id) });
@@ -110,12 +110,51 @@ async function run() {
             res.send(result)
         });
         //Add rider API
-        app.post("/riders",async (req,res) => {
-            const  riderData = req.body;
+        app.post("/riders", async (req, res) => {
+            const riderData = req.body;
             const result = await riderCollection.insertOne(riderData);
             res.send(result)
         })
+        //get pending riders
+        app.get("/riders/pending", async (req, res) => {
+            try {
+                const query = { status: "pending" };
+                const result = await riderCollection.find(query).toArray();
 
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to get pending riders",
+                    error: error.message,
+                });
+            }
+        });
+        //update rider status
+        app.patch("/riders/:id", async (req, res) => {
+            const id = req.params.id;
+            const { status } = req.body;
+
+            const result = await riderCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status } }
+            );
+
+            res.send(result);
+        });
+        //get active riders api
+        app.get("/riders/active", async (req, res) => {
+            try {
+                const query = { status: "active" };
+                const activeRiders = await riderCollection.find(query).toArray();
+
+                res.status(200).send(activeRiders);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to get active riders",
+                    error: error.message,
+                });
+            }
+        });
         // Mark parcel as paid
         app.patch("/parcels/:id", async (req, res) => {
             try {
